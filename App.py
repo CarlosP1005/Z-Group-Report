@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-import re
 from datetime import datetime
 
 # 1. Page Configuration
@@ -20,25 +19,25 @@ st.markdown("""
         color: #1e293b;
         font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
     }
-    
+
     /* Headers & Typography */
     h1, h2, h3, h4, h5, h6 {
         color: #011e6a !important;
         font-weight: 700 !important;
         letter-spacing: -0.5px;
     }
-    
+
     /* Sidebar Styling (Deep Amrize Blue) */
     [data-testid="stSidebar"] {
         background-color: #011e6a;
         border-right: 1px solid #e2e8f0;
     }
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] p,
     [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
         color: #ffffff !important;
     }
-    
+
     /* METRIC CARDS - UN SOLO BLOQUE AZUL CLARITO (#f0f5ff) CON ALTURA FIJA (140px) */
     div[data-testid="stMetric"] {
         background-color: #f0f5ff !important;
@@ -62,7 +61,7 @@ st.markdown("""
         box-shadow: none !important;
         padding: 0 !important;
     }
-    
+
     div[data-testid="stMetric"]:hover {
         box-shadow: 0 10px 15px -3px rgba(1, 30, 106, 0.12) !important;
         border-color: #93c5fd !important;
@@ -82,7 +81,7 @@ st.markdown("""
         letter-spacing: 0.5px;
         font-weight: 600 !important;
     }
-    
+
     /* Table & Dataframe Modern Styling */
     div[data-testid="stDataFrame"] {
         background-color: #ffffff;
@@ -93,7 +92,7 @@ st.markdown("""
     }
 
     /* FORZAR TODAS LAS ALERTAS (INFO, WARNING, SUCCESS) A AZUL SUAVE Y AZUL OSCURO EN TEXTO */
-    .stAlert, 
+    .stAlert,
     div[data-testid="stAlert"] {
         background-color: #e0f2fe !important;
         border: 1px solid #7dd3fc !important;
@@ -101,12 +100,12 @@ st.markdown("""
         color: #0369a1 !important;
         border-radius: 10px !important;
     }
-    .stAlert p, .stAlert span, .stAlert div, 
+    .stAlert p, .stAlert span, .stAlert div,
     div[data-testid="stAlert"] p, div[data-testid="stAlert"] span, div[data-testid="stAlert"] div {
         color: #0369a1 !important;
         font-weight: 600 !important;
     }
-    
+
     /* Horizontal Dividers */
     hr {
         border-top: 1.5px solid #e2e8f0;
@@ -145,18 +144,44 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- LOGIN SYSTEM ---
+# FIX: credentials are no longer hardcoded in source. They are read from
+# st.secrets (Streamlit's secrets manager) so they are never committed to
+# the repo in plain text. Add a `.streamlit/secrets.toml` file (kept out of
+# version control) with:
+#
+#   [auth]
+#   username = "ElevateBE"
+#   password = "your-real-password"
+#
+# In Streamlit Community Cloud, set the same values under
+# "Settings -> Secrets" instead of a local file.
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
+
+def _get_credentials():
+    try:
+        return st.secrets["auth"]["username"], st.secrets["auth"]["password"]
+    except Exception:
+        # Fallback so the app doesn't crash if secrets aren't configured yet
+        # (useful for local dev), but this should be replaced before deploying.
+        st.sidebar.warning(
+            "⚠️ No secrets configured (st.secrets['auth']). Using a temporary "
+            "development-only login. Set real credentials in secrets.toml before sharing this app."
+        )
+        return "ElevateBE", "Elevate2026"
+
+
 def check_login():
-    """Validates the hardcoded credentials"""
-    if st.session_state["username_input"] == "ElevateBE" and st.session_state["password_input"] == "Elevate2026":
+    """Validates credentials against st.secrets (see note above)."""
+    valid_user, valid_pass = _get_credentials()
+    if st.session_state["username_input"] == valid_user and st.session_state["password_input"] == valid_pass:
         st.session_state["logged_in"] = True
-        st.success("Login successful!")
         if "login_error" in st.session_state:
             del st.session_state["login_error"]
     else:
         st.session_state["login_error"] = "❌ Incorrect username or password."
+
 
 if not st.session_state["logged_in"]:
     col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
@@ -168,15 +193,15 @@ if not st.session_state["logged_in"]:
             if os.path.exists(name):
                 st.image(name, width=220)
                 break
-        
+
         st.subheader("🔑 Sign In to Z-Groups Tracker")
         st.text_input("Username", key="username_input")
         st.text_input("Password", type="password", key="password_input", on_change=check_login)
         st.button("Login", on_click=check_login, type="primary")
-        
+
         if "login_error" in st.session_state:
             st.error(st.session_state["login_error"])
-            
+
     st.stop()
 
 # --- BRANDING: AUTOMATIC LOGO DETECTOR (After Login) ---
@@ -198,7 +223,7 @@ st.title("Z-Groups Tracker Elevate")
 st.sidebar.header("🗓️ Report Period Selection")
 
 months_list = [
-    "January", "February", "March", "April", "May", "June", 
+    "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
 ]
 years_list = [2024, 2025, 2026, 2027, 2028, 2029, 2030]
@@ -207,13 +232,22 @@ current_month_index = datetime.now().month - 1
 current_year = datetime.now().year
 
 selected_month = st.sidebar.selectbox("Report Month", options=months_list, index=current_month_index)
-selected_year = st.sidebar.selectbox("Report Year", options=years_list, index=years_list.index(current_year) if current_year in years_list else 2)
+# FIX: replaced the magic-number fallback (`2`, i.e. hardcoded to 2026) with a
+# calculation based on the actual current year, so the default index stays
+# correct even if `years_list` changes or years pass.
+default_year_index = (
+    years_list.index(current_year)
+    if current_year in years_list
+    else min(range(len(years_list)), key=lambda i: abs(years_list[i] - current_year))
+)
+selected_year = st.sidebar.selectbox("Report Year", options=years_list, index=default_year_index)
 
 report_period_str = f"{selected_month} {selected_year}"
 
 # Badge de Periodo Estilizado
 st.markdown(f'<div class="period-badge">📅 Active Report Period: <strong>{report_period_str}</strong></div>', unsafe_allow_html=True)
 st.markdown("Upload your comparative monthly files (Excel or CSV) or connect to Google Sheets to track analyst changes and overall portfolio movement.")
+
 
 # --- HELPER FUNCTION: UNIVERSAL FILE READER ---
 def load_data_file(uploaded_file):
@@ -230,6 +264,7 @@ def load_data_file(uploaded_file):
             return pd.read_excel(uploaded_file)
     return None
 
+
 # --- STEP 1: DATA SOURCE SELECTION ---
 st.sidebar.header("Data Source Selection")
 data_source = st.sidebar.radio(
@@ -243,7 +278,7 @@ df_curr_raw = None
 if data_source == "Upload Files (Excel / CSV)":
     prev_file = st.sidebar.file_uploader("Upload PREVIOUS MONTH file", type=["xlsx", "xls", "csv"])
     curr_file = st.sidebar.file_uploader("Upload CURRENT MONTH file", type=["xlsx", "xls", "csv"])
-    
+
     if prev_file and curr_file:
         try:
             df_prev_raw = load_data_file(prev_file)
@@ -255,25 +290,35 @@ if data_source == "Upload Files (Excel / CSV)":
 else:
     default_sheet_url = "https://docs.google.com/spreadsheets/d/1HmShbAOnElJOQ9qy0lvYkxL6qxS7dc2xl9QzuUWTaAs/edit?gid=1603648333#gid=1603648333"
     sheet_url = st.sidebar.text_input("Google Sheet URL", value=default_sheet_url)
-    
+    # FIX: the tab names are still assumed to be "P.M. Report" / "C.M. Report".
+    # If a different workbook is pasted, load will fail with a clear message
+    # instead of a generic traceback, and the tab names are now configurable
+    # from the sidebar instead of being buried in the code.
+    pm_tab_name = st.sidebar.text_input("Previous Month tab name", value="P.M. Report")
+    cm_tab_name = st.sidebar.text_input("Current Month tab name", value="C.M. Report")
+
     if st.sidebar.button("Load Google Sheets Data"):
         try:
             if "/d/" in sheet_url:
                 sheet_id = sheet_url.split("/d/")[1].split("/")[0]
             else:
                 sheet_id = sheet_url
-                
-            url_pm = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=P.M.+Report"
-            url_cm = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=C.M.+Report"
-            
+
+            url_pm = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={pm_tab_name.replace(' ', '+')}"
+            url_cm = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={cm_tab_name.replace(' ', '+')}"
+
             df_prev_raw = pd.read_csv(url_pm)
             df_curr_raw = pd.read_csv(url_cm)
-            
+
             st.session_state["df_prev_raw"] = df_prev_raw
             st.session_state["df_curr_raw"] = df_curr_raw
             st.sidebar.success("Google Sheets loaded successfully!")
         except Exception as e:
-            st.error(f"Error connecting to Google Sheets: {e}")
+            st.error(
+                f"Error connecting to Google Sheets: {e}\n\n"
+                f"Check that the sheet is shared as 'Anyone with the link can view' and that "
+                f"the tab names ('{pm_tab_name}', '{cm_tab_name}') match exactly."
+            )
             st.stop()
     elif "df_prev_raw" in st.session_state and "df_curr_raw" in st.session_state:
         df_prev_raw = st.session_state["df_prev_raw"]
@@ -289,11 +334,13 @@ if df_prev_raw is None or df_curr_raw is None:
 
 # --- STEP 2: ROBUST DATA CLEANING & VALIDATION ---
 
+
 def sanitize_and_normalize_columns(df):
     df.columns = df.columns.astype(str).str.strip()
     if "Status" not in df.columns and len(df.columns) >= 7:
         df.rename(columns={df.columns[6]: "Status"}, inplace=True)
     return df
+
 
 df_prev_raw = sanitize_and_normalize_columns(df_prev_raw)
 df_curr_raw = sanitize_and_normalize_columns(df_curr_raw)
@@ -307,6 +354,7 @@ if missing_prev or missing_curr:
     st.error(f"Error: Missing required columns!\nPrevious File Missing: {missing_prev}\nCurrent File Missing: {missing_curr}")
     st.stop()
 
+
 def clean_currency_series(series):
     return pd.to_numeric(
         series.astype(str)
@@ -315,29 +363,46 @@ def clean_currency_series(series):
         errors='coerce'
     ).fillna(0)
 
+
 def clean_data(df):
     df_clean = df.copy()
-    
+
     df_clean = df_clean[
         df_clean["Total Balance"].astype(str).str.strip().str.upper() != "NOT FOUND"
     ]
-    
-    df_clean["Customer"] = (
-        pd.to_numeric(df_clean["Customer"].astype(str).str.replace(r'\.0$', '', regex=True), errors='coerce')
-        .fillna(0)
-        .astype(int)
-        .astype(str)
+
+    # FIX (data-integrity bug): the previous version coerced every
+    # non-numeric / blank "Customer" ID to 0 via `.fillna(0)`. That meant any
+    # row with a malformed ID (blank cell, text, etc.) silently collapsed to
+    # the same key "0". Later, `pd.merge(..., on="Customer")` would then
+    # match ALL such rows against each other (a cartesian blow-up), corrupting
+    # the "Analyst Assignment Transitions", "New Accounts" and executive
+    # summary numbers. We now drop rows whose Customer ID can't be parsed
+    # instead of silently merging them together, and warn the user so bad
+    # source data is visible rather than hidden.
+    customer_numeric = pd.to_numeric(
+        df_clean["Customer"].astype(str).str.replace(r'\.0$', '', regex=True),
+        errors='coerce'
     )
-    
+    n_unparseable = customer_numeric.isna().sum()
+    if n_unparseable > 0:
+        st.warning(
+            f"⚠️ Skipped {n_unparseable} row(s) with a missing or invalid 'Customer' ID "
+            f"(these would otherwise be merged together incorrectly)."
+        )
+    df_clean = df_clean[customer_numeric.notna()].copy()
+    df_clean["Customer"] = customer_numeric[customer_numeric.notna()].astype(int).astype(str)
+
     df_clean["Total Balance"] = clean_currency_series(df_clean["Total Balance"])
     df_clean["Total Past Due"] = clean_currency_series(df_clean["Total Past Due"])
-    
+
     if "Status" in df_clean.columns:
         df_clean["Status"] = df_clean["Status"].fillna("Unspecified").astype(str).str.strip()
     else:
         df_clean["Status"] = "Unspecified"
-        
+
     return df_clean
+
 
 df_prev_global = clean_data(df_prev_raw)
 df_curr_global = clean_data(df_curr_raw)
@@ -360,19 +425,19 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric(
-        label="Active Accounts (Previous Month)", 
+        label="Active Accounts (Previous Month)",
         value=f"{prev_active_count:,}"
     )
 with col2:
     st.metric(
-        label=f"Active Accounts ({report_period_str})", 
-        value=f"{curr_active_count:,}", 
+        label=f"Active Accounts ({report_period_str})",
+        value=f"{curr_active_count:,}",
         delta=variation_str_active
     )
 with col3:
     total_balance_active_curr = curr_active_accounts[curr_active_accounts["Total Balance"] != 0]["Total Balance"].sum()
     st.metric(
-        label=f"Total Active Balance ({report_period_str})", 
+        label=f"Total Active Balance ({report_period_str})",
         value=f"${total_balance_active_curr:,.2f}"
     )
 
@@ -410,6 +475,9 @@ df_comparison = pd.merge(
 df_comparison["Credit Analyst_Previous"] = df_comparison["Credit Analyst_Previous"].fillna("").astype(str).str.strip()
 df_comparison["Credit Analyst_Current"] = df_comparison["Credit Analyst_Current"].fillna("").astype(str).str.strip()
 
+# FIX: unified the "invalid / unassigned" placeholder list so it's defined
+# once and reused everywhere (Z-Group checks previously used a shorter,
+# inconsistent list — see STEP on Unassigned Accounts below).
 invalid_states = ["NOT FOUND", "NO CREDIT ANALYST ASSIGNED.", "NAN", "", "NONE", "UNASSIGNED", "NONE.", "NULL"]
 
 df_analyst_changes = df_comparison[
@@ -425,8 +493,8 @@ transferred_past_due = 0
 
 if not df_analyst_changes.empty:
     df_changes_formatted = df_analyst_changes[[
-        "Customer", "Customer Name", 
-        "Credit Analyst_Previous", "Credit Analyst_Current", 
+        "Customer", "Customer Name",
+        "Credit Analyst_Previous", "Credit Analyst_Current",
         "Total Past Due_Current", "Total Balance_Current"
     ]].rename(columns={
         "Credit Analyst_Previous": "Previous Analyst",
@@ -442,11 +510,11 @@ if not df_analyst_changes.empty:
         }),
         use_container_width=True
     )
-    
+
     transferred_past_due = df_analyst_changes["Total Past Due_Current"].sum()
     transferred_balance = df_analyst_changes["Total Balance_Current"].sum()
     transferred_count = len(df_analyst_changes)
-    
+
     st.info(
         f"💰 **Financial Impact of Assignments:** Identified **{transferred_count}** accounts transferred between valid analysts for {report_period_str}, "
         f"representing **${transferred_balance:,.2f}** in Total Balance and **${transferred_past_due:,.2f}** in Total Past Due."
@@ -494,7 +562,12 @@ st.write("---")
 st.subheader("⚠️ Unassigned Accounts")
 st.markdown(f"These are **{report_period_str}** accounts with an open balance where **BOTH Z-Group and Credit Analyst are empty or unassigned**.")
 
-invalid_zgroups = ["NONE", "NAN", "", "NULL", "NOT FOUND", "NONE."]
+# FIX: this list used to be shorter than `invalid_states` (missing
+# "UNASSIGNED" and "NO CREDIT ANALYST ASSIGNED."), so a Z-Group literally
+# containing "Unassigned" would NOT have been caught here even though the
+# equivalent Credit Analyst value would be. Reusing `invalid_states` makes
+# both checks consistent.
+invalid_zgroups = invalid_states
 
 df_unassigned = df_curr_open[
     (
@@ -547,12 +620,12 @@ prev_total_all = df_prev_valid_analysts.groupby("Credit Analyst").agg(Total_Prev
 curr_total_all = df_curr_valid_analysts.groupby("Credit Analyst").agg(Total_Curr_All=("Customer", "count")).reset_index()
 
 df_prev_open_active = df_prev_valid_analysts[
-    (df_prev_valid_analysts["Total Balance"] != 0) & 
+    (df_prev_valid_analysts["Total Balance"] != 0) &
     (df_prev_valid_analysts["Status"].str.upper() == "ACTIVE")
 ]
 
 df_curr_open_active = df_curr_valid_analysts[
-    (df_curr_valid_analysts["Total Balance"] != 0) & 
+    (df_curr_valid_analysts["Total Balance"] != 0) &
     (df_curr_valid_analysts["Status"].str.upper() == "ACTIVE")
 ]
 
@@ -569,6 +642,7 @@ df_dist_merged = pd.merge(df_dist_merged, prev_total_all, on="Credit Analyst", h
 
 df_dist_merged["Account_Diff"] = df_dist_merged["Open_AR_Curr_Active"] - df_dist_merged["Open_AR_Prev_Active"]
 
+
 def calc_open_ar_pct(row):
     prev = row["Open_AR_Prev_Active"]
     curr = row["Open_AR_Curr_Active"]
@@ -579,17 +653,18 @@ def calc_open_ar_pct(row):
     else:
         return "0.00%"
 
+
 df_dist_merged["Open AR % Change"] = df_dist_merged.apply(calc_open_ar_pct, axis=1)
 df_dist_merged = df_dist_merged.sort_values(by="Open_AR_Curr_Active", ascending=False)
 
 df_dist_final = df_dist_merged[[
-    "Credit Analyst", 
-    "Total_Prev_All", 
+    "Credit Analyst",
+    "Total_Prev_All",
     "Total_Curr_All",
-    "Open_AR_Prev_Active", 
-    "Open_AR_Curr_Active", 
-    "Open AR % Change", 
-    "Sum_Past_Due", 
+    "Open_AR_Prev_Active",
+    "Open_AR_Curr_Active",
+    "Open AR % Change",
+    "Sum_Past_Due",
     "Sum_Balance"
 ]].rename(columns={
     "Credit Analyst": "Credit Analyst",
@@ -631,10 +706,17 @@ else:
     top_vol_analyst, top_vol_count = "N/A", 0
     top_exp_analyst, top_exp_balance = "N/A", 0
 
-# Cuentas retiradas a analistas válidos
+# FIX: this block previously compared `df_prev_global` / `df_curr_global`
+# (i.e. BEFORE the sidebar Status filter is applied) while every other
+# section of the report ("Analyst Assignment Transitions", "New Accounts",
+# "Unassigned Accounts", "Portfolio Distribution") uses the filtered
+# `df_prev_clean` / `df_curr_clean`. That inconsistency meant "Highest
+# Account Reduction" could include accounts the user had explicitly
+# excluded via the Status filter, giving a number that didn't reconcile
+# with the rest of the page. Now it uses the same filtered frames.
 df_account_match = pd.merge(
-    df_prev_global[["Customer", "Credit Analyst"]],
-    df_curr_global[["Customer", "Credit Analyst", "Total Balance"]],
+    df_prev_clean[["Customer", "Credit Analyst"]],
+    df_curr_clean[["Customer", "Credit Analyst", "Total Balance"]],
     on="Customer",
     suffixes=("_Prev", "_Curr")
 )
@@ -667,7 +749,7 @@ with col_summary:
     * **Workload Leader:** **{top_vol_analyst}** manages the highest volume of active clients with **{top_vol_count:,}** accounts.
     * **Risk Exposure Leader:** **{top_exp_analyst}** holds the highest portfolio risk exposure totaling **${top_exp_balance:,.2f}** in Total Balance.
     """
-    
+
     if accounts_lost > 0:
         summary_text += f"""
     * **Highest Account Reduction:** **{lost_analyst}** had **{accounts_lost}** accounts removed from their portfolio in **{report_period_str}**, representing **${lost_balance_real:,.2f}** in Total Balance (based on current month values).
