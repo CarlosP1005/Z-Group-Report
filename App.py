@@ -248,6 +248,12 @@ report_period_str = f"{selected_month} {selected_year}"
 st.markdown(f'<div class="period-badge">📅 Active Report Period: <strong>{report_period_str}</strong></div>', unsafe_allow_html=True)
 st.markdown("Upload your comparative monthly files (Excel or CSV) or connect to Google Sheets to track analyst changes and overall portfolio movement.")
 
+# Placeholder for the "Download report as HTML" button. It's declared here
+# so the button appears near the top of the page, but it's only filled in
+# with real data at the very end of the script, once every table and
+# summary number below has actually been computed.
+report_download_placeholder = st.empty()
+
 
 # --- HELPER FUNCTION: UNIVERSAL FILE READER ---
 def load_data_file(uploaded_file):
@@ -490,6 +496,7 @@ df_analyst_changes = df_comparison[
 
 transferred_balance = 0
 transferred_past_due = 0
+df_changes_formatted = None  # populated below only if there are changes to show
 
 if not df_analyst_changes.empty:
     df_changes_formatted = df_analyst_changes[[
@@ -533,6 +540,7 @@ df_new_accounts = df_curr_open[~df_curr_open["Customer"].isin(prev_customer_ids)
 
 new_accounts_count = len(df_new_accounts)
 new_accounts_balance = df_new_accounts["Total Balance"].sum()
+df_new_formatted = None  # populated below only if there are new accounts to show
 
 if not df_new_accounts.empty:
     df_new_formatted = df_new_accounts[[
@@ -582,6 +590,7 @@ df_unassigned = df_curr_open[
 
 unassigned_balance_sum = 0
 unassigned_count = len(df_unassigned)
+df_unassigned_formatted = None  # populated below only if there are unassigned accounts to show
 
 if not df_unassigned.empty:
     df_unassigned_formatted = df_unassigned[[
@@ -773,3 +782,125 @@ with col_notes:
         )
     else:
         st.info(f"✅ **Outstanding:** All active open-balance accounts have assigned analysts in {report_period_str}. Zero unattended balance detected.")
+
+# --- DOWNLOAD REPORT AS HTML ---
+# Builds a single self-contained HTML file (branding + every table and
+# insight already computed above) and wires it to the download button
+# placeholder created near the top of the page.
+
+
+def _df_to_html_table(df, currency_cols=None):
+    """Render a DataFrame as a simple HTML table, formatting currency columns."""
+    if df is None or df.empty:
+        return "<p class='report-empty'>No data available for this section.</p>"
+    df_display = df.copy()
+    if currency_cols:
+        for col in currency_cols:
+            if col in df_display.columns:
+                df_display[col] = df_display[col].apply(lambda x: f"${x:,.2f}")
+    return df_display.to_html(index=False, border=0, classes="report-table", escape=True)
+
+
+report_generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+html_report = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Z-Groups Tracker Elevate — {report_period_str}</title>
+<style>
+    body {{
+        font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+        background-color: #f8fafc;
+        color: #1e293b;
+        margin: 0;
+        padding: 32px;
+    }}
+    h1 {{ color: #011e6a; margin-bottom: 4px; }}
+    h2 {{ color: #011e6a; margin-top: 40px; border-bottom: 2px solid #dbeafe; padding-bottom: 6px; }}
+    .subtitle {{ color: #334155; margin-top: 0; margin-bottom: 24px; }}
+    .period-badge {{
+        background: #f0f5ff; color: #011e6a; padding: 8px 18px; border-radius: 20px;
+        font-weight: 600; font-size: 14px; display: inline-block; border: 1px solid #93c5fd;
+        margin-bottom: 20px;
+    }}
+    .metrics {{ display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }}
+    .metric-card {{
+        background-color: #f0f5ff; border: 1px solid #dbeafe; border-left: 6px solid #2563eb;
+        padding: 16px 20px; border-radius: 12px; min-width: 220px;
+    }}
+    .metric-label {{ color: #334155; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
+    .metric-value {{ color: #001fbe; font-weight: 800; font-size: 26px; margin-top: 4px; }}
+    table.report-table {{
+        border-collapse: collapse; width: 100%; background-color: #ffffff;
+        border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 8px;
+    }}
+    table.report-table th {{
+        background-color: #011e6a; color: #ffffff; text-align: left; padding: 10px 12px; font-size: 13px;
+    }}
+    table.report-table td {{ padding: 8px 12px; border-top: 1px solid #e2e8f0; font-size: 13px; }}
+    table.report-table tr:nth-child(even) {{ background-color: #f8fafc; }}
+    .report-empty {{ color: #64748b; font-style: italic; }}
+    .insight-box {{
+        background-color: #e0f2fe; border: 1px solid #7dd3fc; border-left: 6px solid #0284c7;
+        color: #0369a1; border-radius: 10px; padding: 14px 18px; margin: 10px 0; font-weight: 600;
+    }}
+    .footer {{ margin-top: 40px; color: #94a3b8; font-size: 12px; }}
+</style>
+</head>
+<body>
+    <h1>📊 Z-Groups Tracker Elevate</h1>
+    <p class="subtitle">Amrize — Order-to-Cash / Credit Portfolio Report</p>
+    <div class="period-badge">📅 Active Report Period: <strong>{report_period_str}</strong></div>
+
+    <h2>📌 General Portfolio Summary</h2>
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="metric-label">Active Accounts (Previous Month)</div>
+            <div class="metric-value">{prev_active_count:,}</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Active Accounts ({report_period_str})</div>
+            <div class="metric-value">{curr_active_count:,} <span style="font-size:14px; color:#334155;">({variation_str_active})</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Total Active Balance ({report_period_str})</div>
+            <div class="metric-value">${total_balance_active_curr:,.2f}</div>
+        </div>
+    </div>
+
+    <h2>🔄 Credit Analyst Assignment Transitions</h2>
+    {_df_to_html_table(df_changes_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    {f'<div class="insight-box">💰 Identified {transferred_count if not df_analyst_changes.empty else 0} accounts transferred between valid analysts for {report_period_str}, representing ${transferred_balance:,.2f} in Total Balance and ${transferred_past_due:,.2f} in Total Past Due.</div>' if df_changes_formatted is not None else f'<div class="insight-box">✅ No credit analyst assignment transitions were detected between valid analysts for {report_period_str}.</div>'}
+
+    <h2>✨ New Accounts of the Month</h2>
+    {_df_to_html_table(df_new_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    <div class="insight-box">Identified {new_accounts_count} new open AR accounts in {report_period_str} with a combined balance of ${new_accounts_balance:,.2f}.</div>
+
+    <h2>⚠️ Unassigned Accounts</h2>
+    {_df_to_html_table(df_unassigned_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    <div class="insight-box">There are {unassigned_count} accounts in {report_period_str} with open balance missing both Z-Group and Credit Analyst, representing ${unassigned_balance_sum:,.2f}.</div>
+
+    <h2>👥 Analyst Portfolio Distribution & Monthly Variation</h2>
+    {_df_to_html_table(df_dist_final, currency_cols=["Total Past Due", "Total Balance"])}
+
+    <h2>📋 Executive Summary & Insights</h2>
+    <ul>
+        <li><strong>Workload Leader:</strong> {top_vol_analyst} manages the highest volume of active clients with {top_vol_count:,} accounts.</li>
+        <li><strong>Risk Exposure Leader:</strong> {top_exp_analyst} holds the highest portfolio risk exposure totaling ${top_exp_balance:,.2f} in Total Balance.</li>
+        <li><strong>Highest Account Reduction:</strong> {f"{lost_analyst} had {accounts_lost} accounts removed from their portfolio in {report_period_str}, representing ${lost_balance_real:,.2f} in Total Balance (based on current month values)." if accounts_lost > 0 else f"No active analysts experienced account removals in {report_period_str}."}</li>
+        <li><strong>New Clients Added:</strong> Identified {new_accounts_count} brand-new client accounts in {report_period_str}, representing ${new_accounts_balance:,.2f} in open balance.</li>
+        <li><strong>Unassigned Portfolio:</strong> There are {unassigned_count} unassigned accounts missing both Z-Group and Credit Analyst, representing ${unassigned_balance_sum:,.2f}.</li>
+    </ul>
+
+    <p class="footer">Generated by Z-Groups Tracker Elevate on {report_generated_at}.</p>
+</body>
+</html>
+"""
+
+report_download_placeholder.download_button(
+    label="⬇️ Download Report as HTML",
+    data=html_report,
+    file_name=f"Z_Group_Report_{report_period_str.replace(' ', '_')}.html",
+    mime="text/html",
+)
