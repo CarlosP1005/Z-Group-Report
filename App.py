@@ -789,8 +789,11 @@ with col_notes:
 # placeholder created near the top of the page.
 
 
-def _df_to_html_table(df, currency_cols=None):
-    """Render a DataFrame as a simple HTML table, formatting currency columns."""
+def _df_to_html_table(df, currency_cols=None, table_id="tbl"):
+    """Render a DataFrame as a scrollable, searchable HTML table (sticky
+    header + a JS search box), so the exported report behaves like the
+    interactive st.dataframe widgets in the app instead of a flat static
+    table that stretches the whole page."""
     if df is None or df.empty:
         return "<p class='report-empty'>No data available for this section.</p>"
     df_display = df.copy()
@@ -798,7 +801,16 @@ def _df_to_html_table(df, currency_cols=None):
         for col in currency_cols:
             if col in df_display.columns:
                 df_display[col] = df_display[col].apply(lambda x: f"${x:,.2f}")
-    return df_display.to_html(index=False, border=0, classes="report-table", escape=True)
+    raw_table_html = df_display.to_html(index=False, border=0, classes="report-table", escape=True)
+    raw_table_html = raw_table_html.replace("<table", f'<table id="{table_id}"', 1)
+    return f"""
+    <div class="table-wrapper">
+        <input type="text" class="table-search" placeholder="🔍 Search this table..." oninput="filterTable('{table_id}', this.value)">
+        <div class="table-scroll">
+            {raw_table_html}
+        </div>
+    </div>
+    """
 
 
 report_generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -831,15 +843,24 @@ html_report = f"""<!DOCTYPE html>
     }}
     .metric-label {{ color: #334155; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }}
     .metric-value {{ color: #001fbe; font-weight: 800; font-size: 26px; margin-top: 4px; }}
+    .table-wrapper {{ margin-top: 8px; }}
+    .table-search {{
+        width: 260px; padding: 7px 12px; margin-bottom: 10px; border: 1px solid #cbd5e1;
+        border-radius: 8px; font-size: 13px; box-sizing: border-box;
+    }}
+    .table-scroll {{
+        max-height: 420px; overflow-y: auto; overflow-x: auto;
+        border: 1px solid #e2e8f0; border-radius: 8px;
+    }}
     table.report-table {{
         border-collapse: collapse; width: 100%; background-color: #ffffff;
-        border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 8px;
     }}
-    table.report-table th {{
-        background-color: #011e6a; color: #ffffff; text-align: left; padding: 10px 12px; font-size: 13px;
+    table.report-table thead th {{
+        position: sticky; top: 0; background-color: #011e6a; color: #ffffff;
+        text-align: left; padding: 10px 12px; font-size: 13px; z-index: 1;
     }}
-    table.report-table td {{ padding: 8px 12px; border-top: 1px solid #e2e8f0; font-size: 13px; }}
-    table.report-table tr:nth-child(even) {{ background-color: #f8fafc; }}
+    table.report-table td {{ padding: 8px 12px; border-top: 1px solid #e2e8f0; font-size: 13px; white-space: nowrap; }}
+    table.report-table tbody tr:nth-child(even) td {{ background-color: #f8fafc; }}
     .report-empty {{ color: #64748b; font-style: italic; }}
     .insight-box {{
         background-color: #e0f2fe; border: 1px solid #7dd3fc; border-left: 6px solid #0284c7;
@@ -870,19 +891,19 @@ html_report = f"""<!DOCTYPE html>
     </div>
 
     <h2>🔄 Credit Analyst Assignment Transitions</h2>
-    {_df_to_html_table(df_changes_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    {_df_to_html_table(df_changes_formatted, currency_cols=["Total Past Due", "Total Balance"], table_id="transitions_table")}
     {f'<div class="insight-box">💰 Identified {transferred_count if not df_analyst_changes.empty else 0} accounts transferred between valid analysts for {report_period_str}, representing ${transferred_balance:,.2f} in Total Balance and ${transferred_past_due:,.2f} in Total Past Due.</div>' if df_changes_formatted is not None else f'<div class="insight-box">✅ No credit analyst assignment transitions were detected between valid analysts for {report_period_str}.</div>'}
 
     <h2>✨ New Accounts of the Month</h2>
-    {_df_to_html_table(df_new_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    {_df_to_html_table(df_new_formatted, currency_cols=["Total Past Due", "Total Balance"], table_id="new_accounts_table")}
     <div class="insight-box">Identified {new_accounts_count} new open AR accounts in {report_period_str} with a combined balance of ${new_accounts_balance:,.2f}.</div>
 
     <h2>⚠️ Unassigned Accounts</h2>
-    {_df_to_html_table(df_unassigned_formatted, currency_cols=["Total Past Due", "Total Balance"])}
+    {_df_to_html_table(df_unassigned_formatted, currency_cols=["Total Past Due", "Total Balance"], table_id="unassigned_table")}
     <div class="insight-box">There are {unassigned_count} accounts in {report_period_str} with open balance missing both Z-Group and Credit Analyst, representing ${unassigned_balance_sum:,.2f}.</div>
 
     <h2>👥 Analyst Portfolio Distribution & Monthly Variation</h2>
-    {_df_to_html_table(df_dist_final, currency_cols=["Total Past Due", "Total Balance"])}
+    {_df_to_html_table(df_dist_final, currency_cols=["Total Past Due", "Total Balance"], table_id="distribution_table")}
 
     <h2>📋 Executive Summary & Insights</h2>
     <ul>
@@ -894,6 +915,21 @@ html_report = f"""<!DOCTYPE html>
     </ul>
 
     <p class="footer">Generated by Z-Groups Tracker Elevate on {report_generated_at}.</p>
+
+    <script>
+    function filterTable(tableId, query) {{
+        query = query.toLowerCase();
+        var table = document.getElementById(tableId);
+        if (!table) return;
+        var tbody = table.getElementsByTagName('tbody')[0];
+        if (!tbody) return;
+        var rows = tbody.rows;
+        for (var i = 0; i < rows.length; i++) {{
+            var text = rows[i].innerText.toLowerCase();
+            rows[i].style.display = text.indexOf(query) > -1 ? '' : 'none';
+        }}
+    }}
+    </script>
 </body>
 </html>
 """
