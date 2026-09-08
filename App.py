@@ -1,7 +1,66 @@
 import streamlit as st
 import pandas as pd
 import os
+import base64
 from datetime import datetime
+
+# List of possible logo filenames, checked in this order. Shared by the
+# on-screen branding and the HTML report export so both stay in sync.
+LOGO_CANDIDATES = ["Amrize_Logo_2025.svg", "Amrize_Logo_2025.png", "logo.png", "logo.svg"]
+
+
+def find_logo_file():
+    for name in LOGO_CANDIDATES:
+        if os.path.exists(name):
+            return name
+    return None
+
+
+def show_logo(width=220):
+    """Safely display the company logo in the Streamlit UI, whether it's an
+    SVG or a raster image (PNG/JPG).
+
+    FIX: previously this just called st.image(name, ...) for whatever file
+    was found. Streamlit's st.image() decodes raster images with PIL, and
+    PIL cannot open SVG files (they're XML text, not pixel data) — that
+    causes a PIL.UnidentifiedImageError crash if the logo is an SVG. SVGs
+    are now rendered directly as HTML/base64, and raster files are
+    validated with PIL before display; a broken file shows a warning
+    instead of crashing the whole app.
+    """
+    logo_path = find_logo_file()
+    if not logo_path:
+        st.info("⚠️ Place 'Amrize_Logo_2025.svg' or 'logo.png' in your project folder.")
+        return
+    try:
+        if logo_path.lower().endswith(".svg"):
+            with open(logo_path, "r", encoding="utf-8") as f:
+                svg_content = f.read()
+            b64 = base64.b64encode(svg_content.encode("utf-8")).decode("utf-8")
+            st.markdown(f'<img src="data:image/svg+xml;base64,{b64}" width="{width}"/>', unsafe_allow_html=True)
+        else:
+            from PIL import Image
+            Image.open(logo_path).verify()
+            st.image(logo_path, width=width)
+    except Exception as e:
+        st.warning(f"⚠️ Couldn't load logo file '{logo_path}': {e}")
+
+
+def get_logo_html_tag(width=180):
+    """Return an <img> tag with the logo embedded as base64 data, so the
+    exported HTML report stays a single self-contained file (no separate
+    image file to keep alongside it, no broken link if it's shared)."""
+    logo_path = find_logo_file()
+    if not logo_path:
+        return ""
+    try:
+        ext = logo_path.lower().rsplit(".", 1)[-1]
+        mime = "image/svg+xml" if ext == "svg" else f"image/{'jpeg' if ext in ('jpg', 'jpeg') else ext}"
+        with open(logo_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f'<img src="data:{mime};base64,{b64}" width="{width}" style="margin-bottom:12px;" alt="Amrize logo"/>'
+    except Exception:
+        return ""
 
 # 1. Page Configuration
 st.set_page_config(
@@ -188,11 +247,7 @@ if not st.session_state["logged_in"]:
     with col_l2:
         st.write("")
         st.write("")
-        logo_names = ["Amrize_Logo_2025.svg", "Amrize_Logo_2025.png", "logo.png", "logo.svg"]
-        for name in logo_names:
-            if os.path.exists(name):
-                st.image(name, width=220)
-                break
+        show_logo(width=220)
 
         st.subheader("🔑 Sign In to Z-Groups Tracker")
         st.text_input("Username", key="username_input")
@@ -205,17 +260,7 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # --- BRANDING: AUTOMATIC LOGO DETECTOR (After Login) ---
-logo_file = None
-possible_names = ["Amrize_Logo_2025.svg", "Amrize_Logo_2025.png", "logo.png", "logo.svg"]
-for name in possible_names:
-    if os.path.exists(name):
-        logo_file = name
-        break
-
-if logo_file:
-    st.image(logo_file, width=280)
-else:
-    st.info("⚠️ Place 'Amrize_Logo_2025.svg' or 'logo.png' in your project folder.")
+show_logo(width=280)
 
 st.title("Z-Groups Tracker Elevate")
 
@@ -882,6 +927,7 @@ html_report = f"""<!DOCTYPE html>
 </style>
 </head>
 <body>
+    {get_logo_html_tag(width=180)}
     <h1>📊 Z-Groups Tracker Elevate</h1>
     <p class="subtitle">Amrize — Order-to-Cash / Credit Portfolio Report</p>
     <div class="period-badge">📅 Active Report Period: <strong>{report_period_str}</strong></div>
