@@ -592,7 +592,16 @@ st.write("---")
 st.subheader("✨ New Accounts of the Month")
 st.markdown(f"These are new active accounts identified in **{report_period_str}** with open AR that did not exist in the previous month report.")
 
-prev_customer_ids = set(df_prev_clean["Customer"].unique())
+# FIX: "new" must mean the Customer ID did not exist ANYWHERE in the
+# previous month's file. The previous version checked against
+# `df_prev_clean`, which is already filtered down to whatever Status the
+# sidebar filter has selected — so a customer that existed last month under
+# a status outside the current filter (e.g. a different Status value) was
+# invisible to this check and got wrongly flagged as "new" even though it
+# was an existing account. We now check against the full, unfiltered
+# previous-month data (`df_prev_global`) so status filtering only affects
+# which accounts are *displayed*, not whether an account counts as new.
+prev_customer_ids = set(df_prev_global["Customer"].unique())
 df_new_accounts = df_curr_open[~df_curr_open["Customer"].isin(prev_customer_ids)]
 
 new_accounts_count = len(df_new_accounts)
