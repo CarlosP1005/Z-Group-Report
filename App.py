@@ -872,6 +872,22 @@ def _df_to_html_table(df, currency_cols=None):
     return f'<div class="table-scroll-container">{raw_table_html}</div>'
 
 
+def _delta_badge_html(delta_str):
+    """Small pill-shaped badge (green/up or red/down) matching the delta
+    indicator Streamlit's st.metric renders next to a KPI value."""
+    if not delta_str or delta_str == "N/A":
+        return ""
+    is_negative = delta_str.strip().startswith("-")
+    arrow = "↓" if is_negative else "↑"
+    bg = "#fee2e2" if is_negative else "#dcfce7"
+    color = "#dc2626" if is_negative else "#16a34a"
+    return (
+        f'<div style="display:inline-block; background:{bg}; color:{color}; '
+        f'font-weight:700; font-size:13px; padding:3px 10px; border-radius:12px; margin-top:8px;">'
+        f'{arrow} {delta_str}</div>'
+    )
+
+
 report_generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
 
 html_report = f"""<!DOCTYPE html>
@@ -970,6 +986,7 @@ html_report = f"""<!DOCTYPE html>
         <div class="period-badge">📅 Active Report Period: <strong>{report_period_str}</strong></div>
     </div>
 
+    <div class="section-title">📌 General Portfolio Summary</div>
     <div class="kpi-container">
         <div class="kpi-card">
             <div class="kpi-title">Active Accounts (Previous Month)</div>
@@ -977,7 +994,8 @@ html_report = f"""<!DOCTYPE html>
         </div>
         <div class="kpi-card">
             <div class="kpi-title">Active Accounts ({report_period_str})</div>
-            <div class="kpi-value">{curr_active_count:,} <span style="font-size:14px; color:#334155; font-weight:600;">({variation_str_active})</span></div>
+            <div class="kpi-value">{curr_active_count:,}</div>
+            {_delta_badge_html(variation_str_active)}
         </div>
         <div class="kpi-card">
             <div class="kpi-title">Total Active Balance ({report_period_str})</div>
@@ -1041,4 +1059,19 @@ report_download_placeholder.download_button(
     data=html_report,
     file_name=f"Z_Group_Report_{report_period_str.replace(' ', '_')}.html",
     mime="text/html",
+    key="download_report_top",
+)
+
+# Second copy of the same button at the very bottom of the page, so users
+# don't have to scroll all the way back up after reviewing the report to
+# download it. Same data as the top button — a unique `key` is required
+# because Streamlit needs distinct widget IDs even for two buttons with
+# identical labels.
+st.write("---")
+st.download_button(
+    label="⬇️ Download Report as HTML",
+    data=html_report,
+    file_name=f"Z_Group_Report_{report_period_str.replace(' ', '_')}.html",
+    mime="text/html",
+    key="download_report_bottom",
 )
